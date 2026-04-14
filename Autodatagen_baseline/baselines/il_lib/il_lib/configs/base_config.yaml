@@ -1,0 +1,132 @@
+defaults:
+  - _self_  # all below configs will override this conf.yaml
+  - arch: ???
+  - task: ???
+  - robot: ???
+
+run_name: "${arch_name}_${task.name}"
+exp_root_dir: .
+arch_name: ???  # filled by arch
+headless: true
+
+# ====== Main Config ======
+seed: 42
+gpus: 1
+num_nodes: 1
+lr: 7e-4
+use_cosine_lr: true
+lr_warmup_steps: 1000
+lr_cosine_steps: 300000
+lr_cosine_min: 5e-6
+lr_layer_decay: 1.0
+wd: 0.0
+bs: 64
+vbs: ${bs}
+data_dir: ???
+eval_interval: 15
+online_eval: null
+
+horizon: ???
+num_latest_obs: ???
+deployed_action_steps: ???
+
+# ====== Action Keys ======
+action_key_dims: ???  # filled by roobt
+
+# ====== Wandb ======
+use_wandb: true
+wandb_project: B1K
+wandb_group: ${arch_name}
+wandb_run_name: ${run_name}
+progress_bar_refresh_rate: 200
+
+# ====== Policy Module ======
+module:
+  _target_: ???  # filled by arch
+  online_eval: ${online_eval}  # filled by eval
+  policy_wrapper: ${policy_wrapper}  # filled by eval
+  robot_type: ${robot.type}
+  lr: ${lr}
+  use_cosine_lr: ${use_cosine_lr}
+  lr_warmup_steps: ${lr_warmup_steps}
+  lr_cosine_steps: ${lr_cosine_steps}
+  lr_cosine_min: ${lr_cosine_min}
+  lr_layer_decay: ${lr_layer_decay}
+  weight_decay: ${wd}
+  action_keys: ${action_keys}
+
+# ====== Data Module ======
+data:
+  _target_: il_lib.datas.BehaviorDataModule
+  data_path: ${data_dir}
+  task_name: 
+    - ${task.name}
+  batch_size: ${bs}
+  val_batch_size: ${vbs}
+  val_split_ratio: 0.1
+  dataloader_num_workers: 4
+  max_num_demos: null 
+  seed: ${seed}
+  dataset_class: omnigibson.learning.datas.BehaviorIterableDataset
+  # ====== Dataset ======
+  robot_type: ${robot.type}
+  obs_window_size: ${num_latest_obs}
+  ctx_len: ${horizon}
+  downsample_factor: 3 # downsample to 10Hz
+  use_task_info: false
+  task_info_range: ${task.task_info_range}
+  multi_view_cameras: ${robot.multi_view_cameras}
+
+# ====== Trainer ======
+trainer:
+  accelerator: "gpu"
+  devices: ${gpus}
+  num_nodes: ${num_nodes}
+  precision: 32
+  strategy: 
+    _target_: pytorch_lightning.strategies.DDPStrategy
+    timeout:
+      _target_: datetime.timedelta
+      seconds: 3600
+  benchmark: true  # enables cudnn.benchmark
+  accumulate_grad_batches: 1
+  num_sanity_val_steps: 1
+  max_epochs: 999999999
+  val_check_interval: null
+  check_val_every_n_epoch: ${eval_interval}
+  gradient_clip_val: 1.0
+  fast_dev_run: false
+  checkpoint:  # this sub-dict will be popped to send to ModelCheckpoint as args
+  - filename: "epoch{epoch}-train_loss{train/loss:.5f}"
+    save_on_train_epoch_end: true  # this is a training metric, so we save it at the end of training epoch
+    save_top_k: 10
+    save_last: true
+    monitor: "train/loss"
+    mode: min
+    auto_insert_metric_name: false  # prevent creating subfolder caused by the slash
+  - filename: "epoch{epoch}-val_l1_{val/l1:.5f}"
+    save_top_k: -1
+    save_last: true
+    monitor: "val/l1"
+    mode: min
+    auto_insert_metric_name: false  # prevent creating subfolder caused by the slash
+  callbacks:
+    - _target_: pytorch_lightning.callbacks.LearningRateMonitor
+      logging_interval: step
+    - _target_: pytorch_lightning.callbacks.RichModelSummary
+    - _target_: il_lib.training.trainer.CustomProgressBar
+      refresh_rate: ${progress_bar_refresh_rate}
+
+# ====== Policy Wrapper ======
+policy_wrapper:
+  _target_: il_lib.policies.policy_base.PolicyWrapper
+  deployed_action_steps: ${deployed_action_steps}
+  obs_window_size: ${num_latest_obs}
+  multi_view_cameras: ${robot.multi_view_cameras}
+  visual_obs_types: ${data.visual_obs_types}
+  use_task_info: ${data.use_task_info}
+  task_info_range: ${task.task_info_range}
+  pcd_range: ${task.pcd_range}
+  robot_type: ${robot.type}
+
+ckpt_path: null

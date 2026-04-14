@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - _self_  # all below configs will override this conf.yaml
+  - /env: sim_a1_joint
+
+online_eval:
+  _target_: iiil.IIILTask
+  cfg:
+    headless: ${headless}
+    write_video: true
+    policy:
+      type: il
+      control_type: joint
+      robot_type: ${robot.type}
+      use_websocket: false
+    env: ${env}
+    task: ${task}
+    hdf_path: ???
+    overwrite: false
+    log_only_success: true
+    mode: null 

@@ -1,0 +1,75 @@
+name: lerobot_openfridge
+
+# ---------------------------------------------------------------------------
+# Adjust these two paths to match your actual dataset location.
+# ---------------------------------------------------------------------------
+data_path: &data_path  data/lerobot/openfridge   # ← set to your dataset root
+repo_id:   &repo_id    "local/openfridge"
+
+# Source images are 1280×720.  They are resized to the target resolution
+# below during the one-time zarr conversion.  The policy then random-crops
+# to crop_shape (set in the workspace config, default 116×116).
+#
+# Larger target = better detail but more GPU memory.
+#   96×96  → ~2.0 GB per GPU with bs=16, 3 cameras
+#  128×128 → ~3.2 GB  (recommended balance)
+#  224×224 → ~9.6 GB
+
+shape_meta: &shape_meta
+  # acceptable types: rgb, low_dim
+  obs:
+    # --- RGB cameras (resized from 1280×720 → 128×128) ---
+    # Names here MUST match the keys in camera_key_map below.
+    first_person_image:
+      shape: [3, 128, 128]
+      type: rgb
+    left_hand_image:
+      shape: [3, 128, 128]
+      type: rgb
+    right_hand_image:
+      shape: [3, 128, 128]
+      type: rgb
+    # --- Proprioceptive state ---
+    agent_pos:
+      shape: [25]
+      # type defaults to low_dim
+  action:
+    shape: [25]
+
+# ---------------------------------------------------------------------------
+# No simulation environment for real-robot data → NoopImageRunner
+# ---------------------------------------------------------------------------
+env_runner:
+  _target_: diffusion_policy.env_runner.noop_image_runner.NoopImageRunner
+
+# ---------------------------------------------------------------------------
+# Dataset
+# ---------------------------------------------------------------------------
+dataset:
+  _target_: diffusion_policy.dataset.lerobot_replay_image_dataset.LeRobotReplayImageDataset
+  shape_meta: *shape_meta
+  data_path: *data_path
+  repo_id:   *repo_id
+
+  horizon:     ${horizon}
+  pad_before:  ${eval:'${n_obs_steps}-1+${n_latency_steps}'}
+  pad_after:   ${eval:'${n_action_steps}-1'}
+  n_obs_steps: ${dataset_obs_steps}
+
+  # Map shape_meta RGB key names → LeRobot dataset key names
+  camera_key_map:
+    first_person_image: observation.images.first_person_camera
+    left_hand_image:    observation.images.left_hand_camera
+    right_hand_image:   observation.images.right_hand_camera
+
+  # Map shape_meta lowdim key name → LeRobot state key
+  lowdim_key_map:
+    agent_pos: observation.state
+
+  action_key: action
+  state_key:  observation.state
+
+  # Cache the converted zarr to disk for faster subsequent loads
+  use_cache: True
+  seed: 42
+  val_ratio: 0.02

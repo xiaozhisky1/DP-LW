@@ -1,0 +1,90 @@
+# @package _global_
+
+arch_name: wbvima
+
+# ====== Policy specific ======
+horizon: 2
+num_latest_obs: 2
+deployed_action_steps: 8
+wd: 0.1
+bs: 128
+
+# ====== module ======
+module:
+  _target_: il_lib.policies.WBVIMA
+  prop_dim: 37
+  prop_keys: 
+    - odom/base_velocity
+    - qpos/torso
+    - qpos/left_arm
+    - qpos/left_gripper
+    - qpos/right_arm
+    - qpos/right_gripper
+    - eef/left_pos
+    - eef/left_quat
+    - eef/right_pos
+    - eef/right_quat
+  num_latest_obs: ${num_latest_obs}
+  # ====== Feature Extractors ======
+  feature_extractors:
+    proprioception:
+      _target_: il_lib.nn.common.MLP
+      input_dim: ${module.prop_dim}
+      hidden_dim: 256
+      output_dim: ${module.xf_n_embd}
+      hidden_depth: 2
+      add_output_activation: true
+    pcd:
+      _target_: il_lib.nn.features.PointNet
+      n_coordinates: 3
+      n_color: 3
+      output_dim: ${module.xf_n_embd}
+      hidden_dim: 256
+      hidden_depth: 2
+    task:
+      _target_: il_lib.nn.common.MLP
+      input_dim: 46
+      hidden_dim: 256
+      output_dim: 256
+      hidden_depth: 2
+      add_output_activation: true
+  use_modality_type_tokens: false
+  # ====== Transformer ======
+  xf_n_embd: 256
+  xf_n_layer: 2
+  xf_n_head: 8
+  xf_dropout_rate: 0.1
+  xf_use_geglu: true
+  # ====== Action Decoding ======
+  learnable_action_readout_token: false
+  action_dim: 23
+  action_prediction_horizon: ${deployed_action_steps}
+  diffusion_step_embed_dim: 128
+  unet_down_dims: [64, 128]
+  unet_kernel_size: 5
+  unet_n_groups: 8
+  unet_cond_predict_scale: true
+  action_keys: ${robot.action_keys}
+  action_key_dims: ${robot.action_key_dims}
+  # ====== diffusion ======
+  noise_scheduler:
+    _target_: diffusers.schedulers.scheduling_ddim.DDIMScheduler
+    num_train_timesteps: 100
+    beta_start: 0.0001
+    beta_end: 0.02
+    # beta_schedule is important
+    # this is the best we found
+    beta_schedule: squaredcos_cap_v2
+    clip_sample: true
+    set_alpha_to_one: true
+    steps_offset: 0
+    prediction_type: epsilon # or sample
+  noise_scheduler_step_kwargs: null
+  num_denoise_steps_per_inference: 16
+  loss_on_latest_obs_only: false
+
+data:
+  use_action_chunks: true
+  visual_obs_types: [pcd]
+  action_prediction_horizon: ${deployed_action_steps}
+  use_task_info: true
