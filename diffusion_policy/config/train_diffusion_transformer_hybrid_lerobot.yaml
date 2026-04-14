@@ -113,11 +113,11 @@ logging:
 
 checkpoint:
   topk:
-    # Monitor training loss (no env rollout → no test_mean_score)
-    monitor_key: train_loss
+    # Monitor validation loss (no env rollout → use val set for model selection)
+    monitor_key: val_loss
     mode: min
     k: 5
-    format_str: 'epoch={epoch:04d}-train_loss={train_loss:.4f}.ckpt'
+    format_str: 'epoch={epoch:04d}-val_loss={val_loss:.4f}.ckpt'
   save_last_ckpt: True
   save_last_snapshot: False
 
